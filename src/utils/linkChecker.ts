@@ -6,6 +6,7 @@ export interface BrokenLink {
     filePath: string;
     brokenUrl: string;
     suggestedUrl?: string;
+    allSuggestions?: { url: string; confidence: number }[];
     confidence?: number;
 }
 
@@ -15,9 +16,6 @@ export class LinkCheckerService {
 
     async fetchSitemap(): Promise<string[]> {
         try {
-            // In a real browser context, fetching a foreign sitemap will result in a CORS error.
-            // For this tool, we'll try to use a CORS proxy or advise the user to use a browser extension.
-            // Using a public CORS proxy for demonstration:
             const proxy = 'https://api.allorigins.win/raw?url=';
             const response = await axios.get(`${proxy}${encodeURIComponent(this.docBaseUrl + '/sitemap.xml')}`);
             const parser = new DOMParser();
@@ -38,8 +36,7 @@ export class LinkCheckerService {
 
     async checkUrl(url: string): Promise<boolean> {
         try {
-            // Using AllOrigins for CORS-friendly HEAD check (this is tricky with HEAD)
-            // For now, let's stick to the URL directly and hope the user has CORS disabled or it's allowed
+            // Some URLs might block proxy or direct access, but we'll try a status check
             await axios.get(url, { timeout: 10000, validateStatus: (status) => status < 400 });
             return true;
         } catch (error: any) {
@@ -47,18 +44,30 @@ export class LinkCheckerService {
         }
     }
 
-    suggestBestMatch(brokenUrl: string): { url: string; confidence: number } {
-        if (this.sitemapUrls.length === 0) return { url: '', confidence: 0 };
+    suggestMatches(brokenUrl: string): { url: string; confidence: number }[] {
+        if (this.sitemapUrls.length === 0) return [];
 
-        let bestMatch = { url: '', confidence: 0 };
+        const brokenSlug = brokenUrl.split('/').pop() || '';
 
-        for (const url of this.sitemapUrls) {
-            const score = compareTwoStrings(brokenUrl, url);
-            if (score > bestMatch.confidence) {
-                bestMatch = { url, confidence: score };
-            }
-        }
+        const matches = this.sitemapUrls.map(url => {
+            const targetSlug = url.split('/').pop() || '';
 
-        return bestMatch;
+            // Score based on full URL similarity
+            const urlScore = compareTwoStrings(brokenUrl, url);
+
+            // Score based on slug similarity (often more important)
+            const slugScore = compareTwoStrings(brokenSlug, targetSlug);
+
+            // Weighted average: prioritizing slug match
+            const totalScore = (urlScore * 0.4) + (slugScore * 0.6);
+
+            return { url, confidence: totalScore };
+        });
+
+        // Filter out very low confidence and sort
+        return matches
+            .filter(m => m.confidence > 0.2)
+            .sort((a, b) => b.confidence - a.confidence)
+            .slice(0, 5);
     }
 }

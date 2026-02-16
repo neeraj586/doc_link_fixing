@@ -66,13 +66,14 @@ const Dashboard: React.FC = () => {
                 for (const link of links) {
                     const isOk = await lc.checkUrl(link);
                     if (!isOk) {
-                        const suggestion = lc.suggestBestMatch(link);
+                        const suggestions = lc.suggestMatches(link);
                         foundBroken.push({
                             fileName: file.path.split('/').pop() || '',
                             filePath: file.path,
                             brokenUrl: link,
-                            suggestedUrl: suggestion.url,
-                            confidence: Math.round(suggestion.confidence * 100)
+                            suggestedUrl: suggestions[0]?.url || '',
+                            allSuggestions: suggestions,
+                            confidence: Math.round((suggestions[0]?.confidence || 0) * 100)
                         });
                     }
                 }
@@ -86,6 +87,19 @@ const Dashboard: React.FC = () => {
         } finally {
             setIsScanning(false);
         }
+    };
+
+    const updateLinkSuggestion = (index: number, newUrl: string) => {
+        setBrokenLinks(prev => {
+            const next = [...prev];
+            const suggestion = next[index].allSuggestions?.find(s => s.url === newUrl);
+            next[index] = {
+                ...next[index],
+                suggestedUrl: newUrl,
+                confidence: suggestion ? Math.round(suggestion.confidence * 100) : next[index].confidence
+            };
+            return next;
+        });
     };
 
     const createPR = async () => {
@@ -108,7 +122,7 @@ const Dashboard: React.FC = () => {
                 }
 
                 fileFixes[link.filePath].content = fileFixes[link.filePath].content.replace(
-                    new RegExp(link.brokenUrl, 'g'),
+                    new RegExp(link.brokenUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
                     link.suggestedUrl
                 );
             }
@@ -273,7 +287,7 @@ const Dashboard: React.FC = () => {
                                     <tr>
                                         <th><FileText size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> File Name</th>
                                         <th><AlertCircle size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> Broken URL</th>
-                                        <th><CheckCircle2 size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> Suggested URL</th>
+                                        <th><CheckCircle2 size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> Suggestions</th>
                                         <th>Confidence</th>
                                     </tr>
                                 </thead>
@@ -285,7 +299,31 @@ const Dashboard: React.FC = () => {
                                                 <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{link.filePath}</div>
                                             </td>
                                             <td style={{ color: '#f87171', fontSize: '0.85rem' }}>{link.brokenUrl}</td>
-                                            <td style={{ color: '#4ade80', fontSize: '0.85rem' }}>{link.suggestedUrl}</td>
+                                            <td>
+                                                {link.allSuggestions && link.allSuggestions.length > 0 ? (
+                                                    <select
+                                                        value={link.suggestedUrl}
+                                                        onChange={(e) => updateLinkSuggestion(idx, e.target.value)}
+                                                        style={{
+                                                            width: '100%',
+                                                            padding: '4px 8px',
+                                                            background: '#1e293b',
+                                                            border: '1px solid #334155',
+                                                            borderRadius: '4px',
+                                                            color: '#4ade80',
+                                                            fontSize: '0.85rem'
+                                                        }}
+                                                    >
+                                                        {link.allSuggestions.map((s, sIdx) => (
+                                                            <option key={sIdx} value={s.url}>
+                                                                {s.url.replace('https://docs.capillarytech.com', '')}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                ) : (
+                                                    <span style={{ color: '#64748b', fontSize: '0.85rem' }}>No suggestions found</span>
+                                                )}
+                                            </td>
                                             <td>
                                                 <span className={`confidence-${(link.confidence || 0) > 80 ? 'high' : (link.confidence || 0) > 50 ? 'medium' : 'low'}`} style={{ fontWeight: 600 }}>
                                                     {link.confidence}%
