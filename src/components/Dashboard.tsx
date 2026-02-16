@@ -159,7 +159,14 @@ const Dashboard: React.FC = () => {
                             type="text"
                             placeholder="https://github.com/user/repo"
                             value={repoUrl}
-                            onChange={(e) => setRepoUrl(e.target.value)}
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                const extracted = GitHubService.extractPathFromUrl(val);
+                                if (extracted.repo) setRepoUrl(extracted.repo);
+                                else setRepoUrl(val);
+                                if (extracted.branch) setBranch(extracted.branch);
+                                if (extracted.path && extracted.path !== val) setSpecificPath(extracted.path);
+                            }}
                         />
                     </div>
                     <div>
@@ -181,7 +188,13 @@ const Dashboard: React.FC = () => {
                             type="text"
                             placeholder="docs/intro.md"
                             value={specificPath}
-                            onChange={(e) => setSpecificPath(e.target.value)}
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                const extracted = GitHubService.extractPathFromUrl(val);
+                                if (extracted.repo) setRepoUrl(extracted.repo);
+                                if (extracted.branch) setBranch(extracted.branch);
+                                setSpecificPath(extracted.path);
+                            }}
                         />
                     </div>
                 </div>

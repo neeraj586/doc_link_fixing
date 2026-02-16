@@ -14,10 +14,31 @@ export class GitHubService {
 
   constructor(token: string, repoUrl: string, branch: string = '') {
     this.token = token;
-    const parts = repoUrl.replace('https://github.com/', '').split('/');
+    // Handle full URLs or just owner/repo
+    const cleanUrl = repoUrl.replace('https://github.com/', '').replace(/\/$/, '');
+    const parts = cleanUrl.split('/');
     this.owner = parts[0];
-    this.repo = parts[1].replace('.git', '');
+    this.repo = parts[1]?.replace('.git', '') || '';
     this.branch = branch;
+  }
+
+  static extractPathFromUrl(url: string): { path: string; branch?: string; repo?: string } {
+    if (!url.startsWith('https://github.com/')) return { path: url };
+
+    try {
+      // https://github.com/owner/repo/tree/branch/path
+      const parts = url.replace('https://github.com/', '').split('/');
+      // [owner, repo, 'tree', branch, ...pathParts]
+      if (parts[2] === 'tree' || parts[2] === 'blob') {
+        const branch = parts[3];
+        const path = parts.slice(4).join('/');
+        const repo = `https://github.com/${parts[0]}/${parts[1]}`;
+        return { path: decodeURIComponent(path), branch, repo };
+      }
+      return { path: url };
+    } catch (e) {
+      return { path: url };
+    }
   }
 
   private get headers() {
