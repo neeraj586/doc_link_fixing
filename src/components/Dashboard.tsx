@@ -18,6 +18,7 @@ const Dashboard: React.FC = () => {
     const [token, setToken] = useState(localStorage.getItem('gh_token') || '');
     const [repoUrl, setRepoUrl] = useState('https://github.com/neeraj586/doc_link_fixing');
     const [branch, setBranch] = useState('v1.0');
+    const [specificPath, setSpecificPath] = useState('');
     const [isScanning, setIsScanning] = useState(false);
     const [isFixing, setIsFixing] = useState(false);
     const [progress, setProgress] = useState({ current: 0, total: 0, phase: '' });
@@ -49,7 +50,7 @@ const Dashboard: React.FC = () => {
             await lc.fetchSitemap();
 
             setProgress({ current: 0, total: 0, phase: 'Fetching Markdown Files...' });
-            const files: GitHubFile[] = await gh.getAllMarkdownFiles();
+            const files: GitHubFile[] = await gh.getAllMarkdownFiles(specificPath);
 
             setProgress({ current: 0, total: files.length, phase: 'Scanning for broken links...' });
 
@@ -138,7 +139,7 @@ const Dashboard: React.FC = () => {
             </header>
 
             <div className="glass-card">
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 0.8fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
                     <div>
                         <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#94a3b8' }}>
                             <Settings2 size={16} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> GitHub Token
@@ -167,9 +168,20 @@ const Dashboard: React.FC = () => {
                         </label>
                         <input
                             type="text"
-                            placeholder="main"
+                            placeholder="v1.0"
                             value={branch}
                             onChange={(e) => setBranch(e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#94a3b8' }}>
+                            <FileText size={16} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> Path (Optional)
+                        </label>
+                        <input
+                            type="text"
+                            placeholder="docs/intro.md"
+                            value={specificPath}
+                            onChange={(e) => setSpecificPath(e.target.value)}
                         />
                     </div>
                 </div>

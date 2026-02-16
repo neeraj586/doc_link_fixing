@@ -27,25 +27,27 @@ export class GitHubService {
     };
   }
 
-  async getAllMarkdownFiles(): Promise<GitHubFile[]> {
+  async getAllMarkdownFiles(specificPath: string = ''): Promise<GitHubFile[]> {
     const files: GitHubFile[] = [];
-    
+
     // If branch is not specified, we'll need to find the default branch
     if (!this.branch) {
-        const repoInfo = await axios.get(
-            `https://api.github.com/repos/${this.owner}/${this.repo}`,
-            { headers: this.headers }
-        );
-        this.branch = repoInfo.data.default_branch;
+      const repoInfo = await axios.get(
+        `https://api.github.com/repos/${this.owner}/${this.repo}`,
+        { headers: this.headers }
+      );
+      this.branch = repoInfo.data.default_branch;
     }
 
-    const fetchDir = async (path: string = '') => {
+    const fetchDir = async (path: string) => {
       const response = await axios.get(
         `https://api.github.com/repos/${this.owner}/${this.repo}/contents/${path}?ref=${this.branch}`,
         { headers: this.headers }
       );
 
-      for (const item of response.data) {
+      const items = Array.isArray(response.data) ? response.data : [response.data];
+
+      for (const item of items) {
         if (item.type === 'dir') {
           await fetchDir(item.path);
         } else if (item.name.endsWith('.md')) {
@@ -58,7 +60,15 @@ export class GitHubService {
       }
     };
 
-    await fetchDir();
+    try {
+      await fetchDir(specificPath);
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        throw new Error(`Path "${specificPath}" not found in branch "${this.branch}"`);
+      }
+      throw error;
+    }
+
     return files;
   }
 
@@ -97,22 +107,22 @@ export class GitHubService {
 
     // 3. Create Tree and Commit
     for (const file of files) {
-        // Get current file SHA on the new branch
-        const currentFile = await axios.get(
-            `https://api.github.com/repos/${this.owner}/${this.repo}/contents/${file.path}?ref=${branchName}`,
-            { headers: this.headers }
-        );
-        
-        await axios.put(
-            `https://api.github.com/repos/${this.owner}/${this.repo}/contents/${file.path}`,
-            {
-                message: `chore: fix documentation link in ${file.path}`,
-                content: btoa(unescape(encodeURIComponent(file.content))),
-                sha: currentFile.data.sha,
-                branch: branchName
-            },
-            { headers: this.headers }
-        );
+      // Get current file SHA on the new branch
+      const currentFile = await axios.get(
+        `https://api.github.com/repos/${this.owner}/${this.repo}/contents/${file.path}?ref=${branchName}`,
+        { headers: this.headers }
+      );
+
+      await axios.put(
+        `https://api.github.com/repos/${this.owner}/${this.repo}/contents/${file.path}`,
+        {
+          message: `chore: fix documentation link in ${file.path}`,
+          content: btoa(unescape(encodeURIComponent(file.content))),
+          sha: currentFile.data.sha,
+          branch: branchName
+        },
+        { headers: this.headers }
+      );
     }
 
     // 4. Create Pull Request
