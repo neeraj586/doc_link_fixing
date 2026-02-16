@@ -10,12 +10,14 @@ export class GitHubService {
   private token: string;
   private owner: string;
   private repo: string;
+  private branch: string;
 
-  constructor(token: string, repoUrl: string) {
+  constructor(token: string, repoUrl: string, branch: string = '') {
     this.token = token;
     const parts = repoUrl.replace('https://github.com/', '').split('/');
     this.owner = parts[0];
     this.repo = parts[1].replace('.git', '');
+    this.branch = branch;
   }
 
   private get headers() {
@@ -28,9 +30,18 @@ export class GitHubService {
   async getAllMarkdownFiles(): Promise<GitHubFile[]> {
     const files: GitHubFile[] = [];
     
+    // If branch is not specified, we'll need to find the default branch
+    if (!this.branch) {
+        const repoInfo = await axios.get(
+            `https://api.github.com/repos/${this.owner}/${this.repo}`,
+            { headers: this.headers }
+        );
+        this.branch = repoInfo.data.default_branch;
+    }
+
     const fetchDir = async (path: string = '') => {
       const response = await axios.get(
-        `https://api.github.com/repos/${this.owner}/${this.repo}/contents/${path}`,
+        `https://api.github.com/repos/${this.owner}/${this.repo}/contents/${path}?ref=${this.branch}`,
         { headers: this.headers }
       );
 
@@ -53,11 +64,12 @@ export class GitHubService {
 
   async getFileContent(path: string): Promise<string> {
     const response = await axios.get(
-      `https://api.github.com/repos/${this.owner}/${this.repo}/contents/${path}`,
+      `https://api.github.com/repos/${this.owner}/${this.repo}/contents/${path}?ref=${this.branch}`,
       { headers: this.headers }
     );
-    // decode base64
-    return atob(response.data.content.replace(/\n/g, ''));
+    // decode base64 utf-8
+    const bytes = Uint8Array.from(atob(response.data.content.replace(/\n/g, '')), c => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
   }
 
   async createDraftPR(
@@ -66,14 +78,9 @@ export class GitHubService {
     body: string,
     files: { path: string; content: string }[]
   ) {
-    // 1. Get default branch SHA
-    const repoInfo = await axios.get(
-      `https://api.github.com/repos/${this.owner}/${this.repo}`,
-      { headers: this.headers }
-    );
-    const defaultBranch = repoInfo.data.default_branch;
+    // 1. Get base branch SHA
     const branchRes = await axios.get(
-      `https://api.github.com/repos/${this.owner}/${this.repo}/git/ref/heads/${defaultBranch}`,
+      `https://api.github.com/repos/${this.owner}/${this.repo}/git/ref/heads/${this.branch}`,
       { headers: this.headers }
     );
     const baseSha = branchRes.data.object.sha;
@@ -88,9 +95,9 @@ export class GitHubService {
       { headers: this.headers }
     );
 
-    // 3. Create Tree and Commit (Simplified: update files one by one for this demo)
+    // 3. Create Tree and Commit
     for (const file of files) {
-        // Get current file SHA
+        // Get current file SHA on the new branch
         const currentFile = await axios.get(
             `https://api.github.com/repos/${this.owner}/${this.repo}/contents/${file.path}?ref=${branchName}`,
             { headers: this.headers }
@@ -100,7 +107,7 @@ export class GitHubService {
             `https://api.github.com/repos/${this.owner}/${this.repo}/contents/${file.path}`,
             {
                 message: `chore: fix documentation link in ${file.path}`,
-                content: btoa(file.content),
+                content: btoa(unescape(encodeURIComponent(file.content))),
                 sha: currentFile.data.sha,
                 branch: branchName
             },
@@ -115,7 +122,7 @@ export class GitHubService {
         title,
         body,
         head: branchName,
-        base: defaultBranch,
+        base: this.branch,
         draft: true
       },
       { headers: this.headers }
